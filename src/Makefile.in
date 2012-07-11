@@ -1,0 +1,45 @@
+AS = @DCAS@
+LD = @DCLD@
+CC = @DCCC@
+AR = @DCAR@
+OBJCOPY = @DCOBJCOPY@
+CFLAGS = @DCCFLAGS@ -I$(top_srcdir) -I$(RONINDIR)/include
+LDFLAGS = -Wl,--oformat,elf32-shl,-Ttext=$(BASEADDR) -nostartfiles \
+          -L$(RONINDIR)/lib $(RONINDIR)/lib/crt0.o
+
+top_srcdir=@top_srcdir@
+top_builddir=@top_builddir@
+srcdir=@srcdir@
+VPATH=@srcdir@
+
+RONINDIR=@RONINDIR@
+
+
+BASEADDR=0x8c010000
+
+OBJS = main.o ftpd.o vfs.o
+LIBS = -lronin
+
+all : ftpd.elf
+
+ftpd.elf : $(OBJS)
+	$(CC) -o $@ $(LDFLAGS) $(OBJS) $(LIBS)
+
+clean :
+	-rm -f ftpd.elf $(OBJS)
+
+main.o : main.c ftpd.h
+
+ftpd.o : ftpd.c ftpd.h vfs.h
+
+vfs.o : vfs.c vfs.h
+
+Makefile: Makefile.in config.status
+	./config.status
+
+config.status : configure
+	./config.status --recheck
+
+configure : configure.ac
+	cd $(srcdir) && autoconf
+
