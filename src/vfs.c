@@ -115,14 +115,22 @@ int vfs_closedir(vfs_dir_t *dir)
   return vfsnode_closedir(dir);
 }
 
-vfs_file_t *vfs_open(vfs_t *vfs, const char *path, const char *mode)
+vfs_file_t *vfs_open(vfs_t *vfs, const char *name, const char *mode)
 {
-  return NULL;
+  int offs, writemode = (strchr(mode, 'w')? 1:0);
+  vfs_file_t *r = NULL;
+  char *path = make_absolute_path(vfs, name);
+  if (path) {
+    vfsnode_t *vfsn = vfsnode_find(path, &offs);
+    r = (vfsn? vfsnode_open(vfsn, path+offs, writemode) : NULL);
+    free(path);
+  }
+  return r;
 }
 
 int vfs_read(void *buffer, size_t size, size_t nmemb, vfs_file_t *file)
 {
-  return -ENOSYS;
+  return vfsnode_read(buffer, size, nmemb, file);
 }
 
 int vfs_write(const void *buffer, size_t size, size_t nmemb, vfs_file_t *file)
@@ -132,12 +140,12 @@ int vfs_write(const void *buffer, size_t size, size_t nmemb, vfs_file_t *file)
 
 int vfs_eof(vfs_file_t *file)
 {
-  return -ENOSYS;
+  return vfsnode_eof(file);
 }
 
 int vfs_close(vfs_file_t *file)
 {
-  return -ENOSYS;
+  return vfsnode_close(file);
 }
 
 int vfs_chdir(vfs_t *vfs, const char *path)

@@ -44,6 +44,10 @@ struct vfsnode_vtable_s
   vfs_dirent_t *(*readdir)(vfsnode_t *, vfs_dir_t *);
   void (*closedir)(vfsnode_t *, vfs_dir_t *);
   int (*stat)(vfsnode_t *, const char *, vfs_stat_t *);
+  int (*open)(vfsnode_t *, vfs_file_t *, const char *, int);
+  int (*read)(vfsnode_t *, vfs_file_t *, void *, size_t, size_t);
+  int (*eof)(vfsnode_t *, vfs_file_t *);
+  int (*close)(vfsnode_t *, vfs_file_t *);
 };
 
 struct vfs_dir_s
@@ -52,10 +56,22 @@ struct vfs_dir_s
   vfsnode_t *node;
   vfs_dirent_t *dirent;
   void *posp;
+  unsigned long posn;
+};
+
+struct vfs_file_s
+{
+  vfs_file_t *link;
+  vfsnode_t *node;
+  int eof;
+  void *posp;
+  unsigned long posn;
 };
 
 vfsnode_t *vfsnode_mknode(vfsnode_t *parent, const char *name, vfsnode_vtable_t *vtable, void *context);
 vfsnode_t *vfsnode_mkvirtnode(vfsnode_t *parent, const char *name);
+vfsnode_t *vfsnode_mkromnode(vfsnode_t *parent, const char *name,
+			     const void *data, size_t len);
 
 vfsnode_t *vfsnode_find(const char *path, int *offs);
 
@@ -64,6 +80,11 @@ vfs_dir_t *vfsnode_opendir(vfsnode_t *node, const char *path);
 int vfsnode_closedir(vfs_dir_t *dir);
 
 int vfsnode_stat(vfsnode_t *node, const char *path, vfs_stat_t *st);
+
+vfs_file_t *vfsnode_open(vfsnode_t *node, const char *path, int write_mode);
+int vfsnode_read(void *buffer, size_t size, size_t nmemb, vfs_file_t *file);
+int vfsnode_eof(vfs_file_t *file);
+int vfsnode_close(vfs_file_t *file);
 
 
 void vfsnode_init(void);

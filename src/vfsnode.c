@@ -40,6 +40,7 @@ struct vfsnode_s {
   vfsnode_vtable_t *vtable;
   vfsnode_t *parent, *root, *sibling;
   vfs_dir_t *dirs;
+  vfs_file_t *files;
   void *private;
   char name[];
 };
@@ -149,6 +150,67 @@ static vfsnode_vtable_t virtnode_vtable = {
   .stat = virtnode_stat,
 };
 
+typedef struct rom_s { const void *data; size_t len; } rom_t;
+
+typedef struct romnode_private_s {
+  rom_t rom;
+} romnode_private_t;
+
+static void romnode_init(vfsnode_t *node, void *context)
+{
+  romnode_private_t *private = calloc(1, sizeof(romnode_private_t));
+  if (private) {
+    private->rom = *(const rom_t *)context;
+    node->private = private;
+  }
+}
+
+static int romnode_stat(vfsnode_t *node, const char *path, vfs_stat_t *st)
+{
+  romnode_private_t *private = (romnode_private_t *)node->private;
+  if (private) {
+    st->st_size = private->rom.len;
+  } else
+    return -ENOENT;
+}
+
+static int romnode_open(vfsnode_t *node, vfs_file_t *file, const char *path,
+			int write_mode)
+{
+  if (*path)
+    return -ENOENT;
+  if (write_mode)
+    return -EROFS;
+  file->posn = 0;
+  return 0;
+}
+
+static int romnode_read(vfsnode_t *node, vfs_file_t *file, void *buffer,
+			size_t size, size_t nmemb)
+{
+  romnode_private_t *private = (romnode_private_t *)node->private;
+  if (private) {
+    size_t bytes, cnt = (private->rom.len - file->posn)/size;
+    if (cnt > nmemb)
+      cnt = nmemb;
+    bytes = cnt * size;
+    if (bytes) {
+      memcpy(buffer, ((const char *)private->rom.data) + file->posn, bytes);
+      file->posn += bytes;
+    }
+    return cnt;
+  } else
+    return 0;
+}
+
+static vfsnode_vtable_t romnode_vtable = {
+  .init = romnode_init,
+  .stat = romnode_stat,
+  .open = romnode_open,
+  .read = romnode_read,
+};
+
+
 vfsnode_t *vfsnode_mknode(vfsnode_t *parent, const char *name, vfsnode_vtable_t *vtable, void *context)
 {
   vfsnode_t *node = calloc(1, sizeof(vfsnode_t)+1+strlen(name));
@@ -160,6 +222,8 @@ vfsnode_t *vfsnode_mknode(vfsnode_t *parent, const char *name, vfsnode_vtable_t 
     node->root = rootnode;
     node->sibling = NULL;
     node->private = NULL;
+    node->dirs = NULL;
+    node->files = NULL;
     strcpy(node->name, name);
     if (vtable->init)
       vtable->init(node, context);
@@ -172,6 +236,13 @@ vfsnode_t *vfsnode_mknode(vfsnode_t *parent, const char *name, vfsnode_vtable_t 
 vfsnode_t *vfsnode_mkvirtnode(vfsnode_t *parent, const char *name)
 {
   return vfsnode_mknode(parent, name, &virtnode_vtable, NULL);
+}
+
+vfsnode_t *vfsnode_mkromnode(vfsnode_t *parent, const char *name,
+			     const void *data, size_t len)
+{
+  rom_t rom = { .data = data, .len = len };
+  return vfsnode_mknode(parent, name, &romnode_vtable, &rom);
 }
 
 vfsnode_t *vfsnode_find(const char *path, int *offs)
@@ -252,6 +323,81 @@ int vfsnode_stat(vfsnode_t *node, const char *path, vfs_stat_t *st)
     return node->vtable->stat(node, path, st);
   } else
     return -ENOSYS;
+}
+
+vfs_file_t *vfsnode_open(vfsnode_t *node, const char *path, int write_mode)
+{
+  if (node->vtable->open) {
+    vfs_file_t *file = calloc(1, sizeof(vfs_file_t));
+    file->link = NULL;
+    file->node = node;
+    file->eof = 0;
+    if (node->vtable->open(node, file, path, write_mode)) {
+      free(file);
+      file = NULL;
+    } else {
+      file->link = node->files;
+      node->files = file;
+    }
+    return file;
+  } else
+    return NULL;
+}
+
+int vfsnode_read(void *buffer, size_t size, size_t nmemb, vfs_file_t *file)
+{
+  vfsnode_t *node;
+  if(!file)
+    return -EBADF;
+  node = file->node;
+  if (node) {
+    int r = 0;
+    if (node->vtable->read)
+      r = node->vtable->read(node, file, buffer, size, nmemb);
+    if (r >= 0 && r < nmemb)
+      file->eof = 1;
+    return r;
+  } else
+    return 0;
+}
+
+int vfsnode_eof(vfs_file_t *file)
+{
+  vfsnode_t *node;
+  if(!file)
+    return -EBADF;
+  node = file->node;
+  if (node) {
+    if (node->vtable->eof)
+      return node->vtable->eof(node, file);
+    else
+      return file->eof;
+  } else
+    return 1;
+}
+
+int vfsnode_close(vfs_file_t *file)
+{
+  vfsnode_t *node;
+  if(!file)
+    return -EBADF;
+  node = file->node;
+  if (node) {
+    if (node->vtable->close)
+      node->vtable->close(node, file);
+    if (node->files == file)
+      node->files = file->link;
+    else {
+      vfs_file_t *ff;
+      for(ff = node->files; ff; ff = ff->link)
+	if (ff->link == file) {
+	  ff->link = file->link;
+	  break;
+	}
+    }
+  }
+  free(file);
+  return 0;
 }
 
 void vfsnode_init(void)
