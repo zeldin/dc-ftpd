@@ -29,57 +29,43 @@
  *
  */
 
-#ifndef __VFS_H__
-#define __VFS_H__
+#ifndef __VFSNODE_H__
+#define __VFSNODE_H__
 
-#include <stddef.h>
-#include <time.h>
+typedef struct vfsnode_s vfsnode_t;
+typedef struct vfsnode_vtable_s vfsnode_vtable_t;
 
-typedef struct vfs_dir_s vfs_dir_t;
-typedef struct vfs_dirent_s vfs_dirent_t;
-typedef struct vfs_file_s vfs_file_t;
-typedef struct vfs_stat_s vfs_stat_t;
-typedef struct vfs_s vfs_t;
-
-struct vfs_dirent_s {
-  void *private;
-  char name[];
+struct vfsnode_vtable_s
+{
+  void (*init)(vfsnode_t *, void *);
+  void (*add_child)(vfsnode_t *, vfsnode_t *);
+  vfsnode_t *(*find)(vfsnode_t *, const char *, int *);
+  int (*opendir)(vfsnode_t *, vfs_dir_t *, const char *);
+  vfs_dirent_t *(*readdir)(vfsnode_t *, vfs_dir_t *);
+  void (*closedir)(vfsnode_t *, vfs_dir_t *);
+  int (*stat)(vfsnode_t *, const char *, vfs_stat_t *);
 };
 
-struct vfs_stat_s {
-  int st_mode;
-  time_t st_mtime;
-  size_t st_size;
+struct vfs_dir_s
+{
+  vfs_dir_t *link;
+  vfsnode_t *node;
+  vfs_dirent_t *dirent;
+  void *posp;
 };
 
-int vfs_stat(vfs_t *vfs, const char *name, vfs_stat_t *st);
-vfs_dirent_t *vfs_readdir(vfs_dir_t *dir);
-vfs_dir_t *vfs_opendir(vfs_t *vfs, const char *path);
-int vfs_closedir(vfs_dir_t *dir);
-vfs_file_t *vfs_open(vfs_t *vfs, const char *path, const char *mode);
-int vfs_read(void *buffer, size_t size, size_t nmemb, vfs_file_t *file);
-int vfs_write(const void *buffer, size_t size, size_t nmemb, vfs_file_t *file);
-int vfs_eof(vfs_file_t *file);
-int vfs_close(vfs_file_t *file);
-int vfs_chdir(vfs_t *vfs, const char *path);
-char *vfs_getcwd(vfs_t *vfs, char *buf, size_t size);
-int vfs_rename(vfs_t *vfs, const char *frompath, const char *topath);
-int vfs_mkdir(vfs_t *vfs, const char *path, int mode);
-int vfs_rmdir(vfs_t *vfs, const char *path);
-int vfs_remove(vfs_t *vfs, const char *path);
-vfs_t *vfs_openfs(void);
-void vfs_closefs(vfs_t *vfs);
-void vfs_load_plugin(int id);
+vfsnode_t *vfsnode_mknode(vfsnode_t *parent, const char *name, vfsnode_vtable_t *vtable, void *context);
+vfsnode_t *vfsnode_mkvirtnode(vfsnode_t *parent, const char *name);
 
-void vfs_init(void);
+vfsnode_t *vfsnode_find(const char *path, int *offs);
 
-#define VFS_ISDIR(x) (x)
-#define VFS_ISREG(x) (!(x))
+vfs_dirent_t *vfsnode_readdir(vfs_dir_t *dir);
+vfs_dir_t *vfsnode_opendir(vfsnode_t *node, const char *path);
+int vfsnode_closedir(vfs_dir_t *dir);
 
-#define VFS_IRWXU 0
-#define VFS_IRWXG 0
-#define VFS_IRWXO 0
+int vfsnode_stat(vfsnode_t *node, const char *path, vfs_stat_t *st);
 
-#define vfs_default_fs 0
 
-#endif				/* __VFS_H__ */
+void vfsnode_init(void);
+
+#endif				/* __VFSNODE_H__ */

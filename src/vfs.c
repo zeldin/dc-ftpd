@@ -34,6 +34,7 @@
 #include <errno.h>
 
 #include "vfs.h"
+#include "vfsnode.h"
 
 struct vfs_s {
   int dummy;
@@ -41,22 +42,26 @@ struct vfs_s {
 
 int vfs_stat(vfs_t *vfs, const char *name, vfs_stat_t *st)
 {
-  return -ENOSYS;
+  int offs;
+  vfsnode_t *vfsn = vfsnode_find(name, &offs);
+  return (vfsn? vfsnode_stat(vfsn, name+offs, st) : -ENOENT);
 }
 
 vfs_dirent_t *vfs_readdir(vfs_dir_t *dir)
 {
-  return NULL;
+  return vfsnode_readdir(dir);
 }
 
 vfs_dir_t *vfs_opendir(vfs_t *vfs, const char *path)
 {
-  return NULL;
+  int offs;
+  vfsnode_t *vfsn = vfsnode_find(path, &offs);
+  return (vfsn? vfsnode_opendir(vfsn, path+offs) : NULL);
 }
 
 int vfs_closedir(vfs_dir_t *dir)
 {
-  return -ENOSYS;
+  return vfsnode_closedir(dir);
 }
 
 vfs_file_t *vfs_open(vfs_t *vfs, const char *path, const char *mode)
@@ -143,4 +148,9 @@ void vfs_closefs(vfs_t *vfs)
 
 void vfs_load_plugin(int id)
 {
+}
+
+void vfs_init(void)
+{
+  vfsnode_init();
 }

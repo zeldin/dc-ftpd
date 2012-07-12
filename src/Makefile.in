@@ -17,7 +17,7 @@ RONINDIR=@RONINDIR@
 
 BASEADDR=0x8c010000
 
-OBJS = main.o ftpd.o vfs.o
+OBJS = main.o ftpd.o vfs.o vfsnode.o
 LIBS = -lronin
 
 all : ftpd.elf
@@ -28,11 +28,14 @@ ftpd.elf : $(OBJS)
 clean :
 	-rm -f ftpd.elf $(OBJS)
 
-main.o : main.c ftpd.h
+main.o : main.c ftpd.h vfs.h
 
 ftpd.o : ftpd.c ftpd.h vfs.h
 
-vfs.o : vfs.c vfs.h
+vfs.o : vfs.c vfs.h vfsnode.h
+
+vfsnode.o : vfsnode.c vfs.h vfsnode.h
+
 
 Makefile: Makefile.in config.status
 	./config.status

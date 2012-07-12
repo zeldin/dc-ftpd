@@ -31,10 +31,12 @@
 
 #include <lwip/sys.h>
 #include "ftpd.h"
+#include "vfs.h"
 
 int main()
 {
   lwip_init();
+  vfs_init();
   ftpd_init();
   sys_thread_yield(YIELD_MODE_STOP);
 }
