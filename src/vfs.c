@@ -37,14 +37,59 @@
 #include "vfsnode.h"
 
 struct vfs_s {
-  int dummy;
+  char *cwd;
 };
+
+static char *make_absolute_path(vfs_t *vfs, const char *name)
+{
+  int l;
+  char *buf;
+  const char *base = vfs->cwd;
+  if (base == NULL || name[0] == '/')
+    base = "/";
+  buf = malloc((l = strlen(base))+strlen(name)+2);
+  if (!buf)
+    return NULL;
+  memcpy(buf, base, l);
+  for(;;) {
+    while(*name == '/')
+      name++;
+    if (!*name)
+      break;
+    if (!l || buf[l-1] != '/')
+      buf[l++] = '/';
+    if (name[0] == '.' && (name[1] == '/' || name[1] == 0)) {
+      name++;
+      continue;
+    } else if (name[0] == '.' && name[1] == '.' &&
+	       (name[2] == '/' || name[2] == 0)) {
+      if (l>1) {
+	--l;
+	while(l>0 && buf[l-1] != '/')
+	  --l;
+      }
+      name+=2;
+      continue;
+    }
+    while (*name && *name != '/')
+      buf[l++] = *name++;
+    if (*name == '/')
+      buf[l++] = '/';
+  }
+  buf[l] = 0;
+  return buf;
+}
 
 int vfs_stat(vfs_t *vfs, const char *name, vfs_stat_t *st)
 {
-  int offs;
-  vfsnode_t *vfsn = vfsnode_find(name, &offs);
-  return (vfsn? vfsnode_stat(vfsn, name+offs, st) : -ENOENT);
+  int offs, r = -ENOMEM;
+  char *path = make_absolute_path(vfs, name);
+  if (path) {
+    vfsnode_t *vfsn = vfsnode_find(path, &offs);
+    r = (vfsn? vfsnode_stat(vfsn, path+offs, st) : -ENOENT);
+    free(path);
+  }
+  return r;
 }
 
 vfs_dirent_t *vfs_readdir(vfs_dir_t *dir)
@@ -52,11 +97,17 @@ vfs_dirent_t *vfs_readdir(vfs_dir_t *dir)
   return vfsnode_readdir(dir);
 }
 
-vfs_dir_t *vfs_opendir(vfs_t *vfs, const char *path)
+vfs_dir_t *vfs_opendir(vfs_t *vfs, const char *name)
 {
   int offs;
-  vfsnode_t *vfsn = vfsnode_find(path, &offs);
-  return (vfsn? vfsnode_opendir(vfsn, path+offs) : NULL);
+  vfs_dir_t *r = NULL;
+  char *path = make_absolute_path(vfs, name);
+  if (path) {
+    vfsnode_t *vfsn = vfsnode_find(path, &offs);
+    r = (vfsn? vfsnode_opendir(vfsn, path+offs) : NULL);
+    free(path);
+  }
+  return r;
 }
 
 int vfs_closedir(vfs_dir_t *dir)
@@ -91,12 +142,20 @@ int vfs_close(vfs_file_t *file)
 
 int vfs_chdir(vfs_t *vfs, const char *path)
 {
-  return -ENOSYS;
+  char *apath = make_absolute_path(vfs, path);
+  if (!apath)
+    return -ENOMEM;
+  if (vfs->cwd)
+    free(vfs->cwd);
+  vfs->cwd = apath;
+  return 0;
 }
 
 char *vfs_getcwd(vfs_t *vfs, char *buf, size_t size)
 {
-  const char *cwd = "/";
+  const char *cwd = vfs->cwd;
+  if(!cwd)
+    cwd = "/";
   if (buf) {
     if (strlen(cwd) >= size) {
       if (size>1)
@@ -134,7 +193,7 @@ vfs_t *vfs_openfs(void)
 {
   vfs_t *vfs = calloc(1, sizeof(vfs_t));
   if (vfs) {
-    vfs->dummy = 0;
+    vfs->cwd = NULL;
   }
   return vfs;
 }
@@ -142,6 +201,8 @@ vfs_t *vfs_openfs(void)
 void vfs_closefs(vfs_t *vfs)
 {
   if (vfs) {
+    if (vfs->cwd)
+      free(vfs->cwd);
     free(vfs);
   }
 }
