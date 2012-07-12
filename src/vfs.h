@@ -32,6 +32,9 @@
 #ifndef __VFS_H__
 #define __VFS_H__
 
+#include <stddef.h>
+#include <time.h>
+
 typedef struct vfs_dir_s vfs_dir_t;
 typedef struct vfs_dirent_s vfs_dirent_t;
 typedef struct vfs_file_s vfs_file_t;
