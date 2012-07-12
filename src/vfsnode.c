@@ -137,6 +137,7 @@ static vfs_dirent_t *virtnode_readdir(vfsnode_t *node_, vfs_dir_t *dir)
 static int virtnode_stat(vfsnode_t *node, const char *path, vfs_stat_t *st)
 {
   st->st_mode = 1;
+  return 0;
 }
 
 static vfsnode_vtable_t virtnode_vtable = {
