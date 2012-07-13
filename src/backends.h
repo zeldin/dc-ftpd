@@ -33,5 +33,6 @@
 #define __BACKENDS_H__
 
 void flash_be_init(void);
+void gdrom_be_init(void);
 
 #endif				/* __BACKENDS_H__ */

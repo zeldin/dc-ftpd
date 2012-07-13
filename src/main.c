@@ -42,6 +42,7 @@ int main()
   lwip_init();
   vfs_init();
   flash_be_init();
+  gdrom_be_init();
   ftpd_init();
   sys_thread_yield(YIELD_MODE_STOP);
 }

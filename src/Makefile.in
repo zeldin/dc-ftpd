@@ -17,7 +17,7 @@ RONINDIR=@RONINDIR@
 
 BASEADDR=0x8c010000
 
-OBJS = main.o ftpd.o vfs.o vfsnode.o flash.o
+OBJS = main.o ftpd.o vfs.o vfsnode.o flash.o gdrom.o
 LIBS = -lronin-noserial
 
 all : ftpd.elf
@@ -37,6 +37,8 @@ vfs.o : vfs.c vfs.h vfsnode.h
 vfsnode.o : vfsnode.c vfs.h vfsnode.h
 
 flash.o : flash.c vfs.h vfsnode.h backends.h
+
+gdrom.o : gdrom.c vfs.h vfsnode.h backends.h
 
 
 Makefile: Makefile.in config.status
