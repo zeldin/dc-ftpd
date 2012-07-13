@@ -52,6 +52,16 @@ static void virtnode_init(vfsnode_t *node, void *context)
   }
 }
 
+static void virtnode_destroy(vfsnode_t *node)
+{
+  virtnode_private_t *private = (virtnode_private_t *)node->private;
+  if (private) {
+    vfsnode_t *child;
+    while ((child = private->first_child))
+      vfsnode_destroy(child);
+  }
+}
+
 static void virtnode_add_child(vfsnode_t *node, vfsnode_t *childnode)
 {
   virtnode_private_t *private = (virtnode_private_t *)node->private;
@@ -64,6 +74,24 @@ static void virtnode_add_child(vfsnode_t *node, vfsnode_t *childnode)
     }
     private->last_child = childnode;
   }
+}
+
+static void virtnode_remove_child(vfsnode_t *node, vfsnode_t *childnode)
+{
+  virtnode_private_t *private = (virtnode_private_t *)node->private;
+  if (private)
+    if (childnode == private->first_child) {
+      if ((private->first_child = childnode->sibling) == NULL)
+	private->last_child = NULL;
+    } else {
+      vfsnode_t *pre;
+      for (pre = private->first_child; pre; pre = pre->sibling)
+	if (pre->sibling == childnode) {
+	  if ((pre->sibling = childnode->sibling) == NULL)
+	    private->last_child = pre;
+	  break;
+	}
+    }
 }
 
 static int compare_name(const char *a, const char *b)
@@ -134,7 +162,9 @@ static int virtnode_stat(vfsnode_t *node, const char *path, vfs_stat_t *st)
 
 static vfsnode_vtable_t virtnode_vtable = {
   .init = virtnode_init,
+  .destroy = virtnode_destroy,
   .add_child = virtnode_add_child,
+  .remove_child = virtnode_remove_child,
   .find = virtnode_find,
   .opendir = virtnode_opendir,
   .readdir = virtnode_readdir,
@@ -234,6 +264,34 @@ vfsnode_t *vfsnode_mkromnode(vfsnode_t *parent, const char *name,
 {
   rom_t rom = { .data = data, .len = len };
   return vfsnode_mknode(parent, name, &romnode_vtable, &rom);
+}
+
+void vfsnode_destroy(vfsnode_t *node)
+{
+  if (node == rootnode)
+    rootnode = NULL;
+  if (node->parent) {
+    if (node->parent->vtable->remove_child)
+      node->parent->vtable->remove_child(node->parent, node);
+    node->parent = NULL;
+  }
+  while (node->dirs) {
+    vfs_dir_t *dd = node->dirs;
+    node->dirs = dd->link;
+    dd->link = NULL;
+    dd->node = NULL;
+  }
+  while (node->files) {
+    vfs_file_t *ff = node->files;
+    node->files = ff->link;
+    ff->link = NULL;
+    ff->node = NULL;
+  }
+  if (node->vtable->destroy)
+    node->vtable->destroy(node);
+  if (node->private)
+    free(node->private);
+  free(node);
 }
 
 vfsnode_t *vfsnode_find(const char *path, int *offs)

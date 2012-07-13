@@ -47,7 +47,9 @@ struct vfsnode_s {
 struct vfsnode_vtable_s
 {
   void (*init)(vfsnode_t *, void *);
+  void (*destroy)(vfsnode_t *);
   void (*add_child)(vfsnode_t *, vfsnode_t *);
+  void (*remove_child)(vfsnode_t *, vfsnode_t *);
   vfsnode_t *(*find)(vfsnode_t *, const char *, int *);
   int (*opendir)(vfsnode_t *, vfs_dir_t *, const char *);
   vfs_dirent_t *(*readdir)(vfsnode_t *, vfs_dir_t *);
@@ -81,6 +83,7 @@ vfsnode_t *vfsnode_mknode(vfsnode_t *parent, const char *name, vfsnode_vtable_t 
 vfsnode_t *vfsnode_mkvirtnode(vfsnode_t *parent, const char *name);
 vfsnode_t *vfsnode_mkromnode(vfsnode_t *parent, const char *name,
 			     const void *data, size_t len);
+void vfsnode_destroy(vfsnode_t *node);
 
 vfsnode_t *vfsnode_find(const char *path, int *offs);
 
