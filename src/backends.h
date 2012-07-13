@@ -29,16 +29,9 @@
  *
  */
 
-#include <lwip/sys.h>
-#include "ftpd.h"
-#include "vfs.h"
-#include "backends.h"
+#ifndef __BACKENDS_H__
+#define __BACKENDS_H__
 
-int main()
-{
-  lwip_init();
-  vfs_init();
-  flash_be_init();
-  ftpd_init();
-  sys_thread_yield(YIELD_MODE_STOP);
-}
+void flash_be_init(void);
+
+#endif				/* __BACKENDS_H__ */

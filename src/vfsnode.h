@@ -35,6 +35,15 @@
 typedef struct vfsnode_s vfsnode_t;
 typedef struct vfsnode_vtable_s vfsnode_vtable_t;
 
+struct vfsnode_s {
+  vfsnode_vtable_t *vtable;
+  vfsnode_t *parent, *root, *sibling;
+  vfs_dir_t *dirs;
+  vfs_file_t *files;
+  void *private;
+  char name[];
+};
+
 struct vfsnode_vtable_s
 {
   void (*init)(vfsnode_t *, void *);

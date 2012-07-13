@@ -36,15 +36,6 @@
 #include "vfs.h"
 #include "vfsnode.h"
 
-struct vfsnode_s {
-  vfsnode_vtable_t *vtable;
-  vfsnode_t *parent, *root, *sibling;
-  vfs_dir_t *dirs;
-  vfs_file_t *files;
-  void *private;
-  char name[];
-};
-
 static vfsnode_t *rootnode = NULL;
 
 typedef struct virtnode_private_s {
