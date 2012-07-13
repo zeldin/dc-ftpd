@@ -33,12 +33,16 @@
 #include <time.h>
 #include <errno.h>
 
+#include <lwip/sys.h>
+
 #include "vfs.h"
 #include "vfsnode.h"
 
 struct vfs_s {
   char *cwd;
 };
+
+static sys_sem_t vfs_sema;
 
 static char *make_absolute_path(vfs_t *vfs, const char *name)
 {
@@ -83,54 +87,72 @@ static char *make_absolute_path(vfs_t *vfs, const char *name)
 int vfs_stat(vfs_t *vfs, const char *name, vfs_stat_t *st)
 {
   int offs, r = -ENOMEM;
-  char *path = make_absolute_path(vfs, name);
-  if (path) {
+  char *path;
+  vfs_lock();
+  if ((path = make_absolute_path(vfs, name))) {
     vfsnode_t *vfsn = vfsnode_find(path, &offs);
     r = (vfsn? vfsnode_stat(vfsn, path+offs, st) : -ENOENT);
     free(path);
   }
+  vfs_unlock();
   return r;
 }
 
 vfs_dirent_t *vfs_readdir(vfs_dir_t *dir)
 {
-  return vfsnode_readdir(dir);
+  vfs_dirent_t *r;
+  vfs_lock();
+  r = vfsnode_readdir(dir);
+  vfs_unlock();
+  return r;
 }
 
 vfs_dir_t *vfs_opendir(vfs_t *vfs, const char *name)
 {
   int offs;
   vfs_dir_t *r = NULL;
-  char *path = make_absolute_path(vfs, name);
-  if (path) {
+  char *path;
+  vfs_lock();
+  if ((path = make_absolute_path(vfs, name))) {
     vfsnode_t *vfsn = vfsnode_find(path, &offs);
     r = (vfsn? vfsnode_opendir(vfsn, path+offs) : NULL);
     free(path);
   }
+  vfs_unlock();
   return r;
 }
 
 int vfs_closedir(vfs_dir_t *dir)
 {
-  return vfsnode_closedir(dir);
+  int r;
+  vfs_lock();
+  r = vfsnode_closedir(dir);
+  vfs_unlock();
+  return r;
 }
 
 vfs_file_t *vfs_open(vfs_t *vfs, const char *name, const char *mode)
 {
   int offs, writemode = (strchr(mode, 'w')? 1:0);
   vfs_file_t *r = NULL;
-  char *path = make_absolute_path(vfs, name);
-  if (path) {
+  char *path;
+  vfs_lock();
+  if ((path = make_absolute_path(vfs, name))) {
     vfsnode_t *vfsn = vfsnode_find(path, &offs);
     r = (vfsn? vfsnode_open(vfsn, path+offs, writemode) : NULL);
     free(path);
   }
+  vfs_unlock();
   return r;
 }
 
 int vfs_read(void *buffer, size_t size, size_t nmemb, vfs_file_t *file)
 {
-  return vfsnode_read(buffer, size, nmemb, file);
+  int r;
+  vfs_lock();
+  r = vfsnode_read(buffer, size, nmemb, file);
+  vfs_unlock();
+  return r;
 }
 
 int vfs_write(const void *buffer, size_t size, size_t nmemb, vfs_file_t *file)
@@ -140,29 +162,42 @@ int vfs_write(const void *buffer, size_t size, size_t nmemb, vfs_file_t *file)
 
 int vfs_eof(vfs_file_t *file)
 {
-  return vfsnode_eof(file);
+  int r;
+  vfs_lock();
+  r = vfsnode_eof(file);
+  vfs_unlock();
+  return r;
 }
 
 int vfs_close(vfs_file_t *file)
 {
-  return vfsnode_close(file);
+  int r;
+  vfs_lock();
+  r = vfsnode_close(file);
+  vfs_unlock();
+  return r;
 }
 
 int vfs_chdir(vfs_t *vfs, const char *path)
 {
-  char *apath = make_absolute_path(vfs, path);
-  if (!apath)
+  char *apath;
+  vfs_lock();
+  if (!(apath = make_absolute_path(vfs, path))) {
+    vfs_unlock();
     return -ENOMEM;
+  }
   if (vfs->cwd)
     free(vfs->cwd);
   vfs->cwd = apath;
+  vfs_unlock();
   return 0;
 }
 
 char *vfs_getcwd(vfs_t *vfs, char *buf, size_t size)
 {
-  const char *cwd = vfs->cwd;
-  if(!cwd)
+  const char *cwd;
+  vfs_lock();
+  if(!(cwd = vfs->cwd))
     cwd = "/";
   if (buf) {
     if (strlen(cwd) >= size) {
@@ -172,9 +207,10 @@ char *vfs_getcwd(vfs_t *vfs, char *buf, size_t size)
 	buf[size-1] = 0;
     } else
       strcpy(buf, cwd);
-    return buf;
   } else
-    return strdup(cwd);
+    buf = strdup(cwd);
+  vfs_unlock();
+  return buf;
 }
 
 int vfs_rename(vfs_t *vfs, const char *frompath, const char *topath)
@@ -209,9 +245,11 @@ vfs_t *vfs_openfs(void)
 void vfs_closefs(vfs_t *vfs)
 {
   if (vfs) {
+    vfs_lock();  
     if (vfs->cwd)
       free(vfs->cwd);
     free(vfs);
+    vfs_unlock();  
   }
 }
 
@@ -219,7 +257,21 @@ void vfs_load_plugin(int id)
 {
 }
 
+void vfs_lock(void)
+{
+  sys_sem_wait(vfs_sema);
+}
+
+void vfs_unlock(void)
+{
+  sys_sem_signal(vfs_sema);
+}
+
 void vfs_init(void)
 {
+  vfs_sema = sys_sem_new(1);
+  /* create lock... */
+  vfs_lock();  
   vfsnode_init();
+  vfs_unlock();  
 }

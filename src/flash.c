@@ -108,6 +108,7 @@ static vfsnode_vtable_t flashnode_vtable = {
 
 void flash_be_init(void)
 {
+  vfs_lock();
   vfsnode_t *root = vfsnode_mkvirtnode(NULL, "flash");
   if (root) {
     int p;
@@ -120,4 +121,5 @@ void flash_be_init(void)
       }
   }
   vfsnode_mkromnode(NULL, "rom", (const void *)0xa0000000, 2*1024*1024);
+  vfs_unlock();
 }

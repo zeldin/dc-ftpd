@@ -73,6 +73,9 @@ void vfs_load_plugin(int id);
 
 void vfs_init(void);
 
+void vfs_lock(void);
+void vfs_unlock(void);
+
 #define VFS_ISDIR(x) (x)
 #define VFS_ISREG(x) (!(x))
 
