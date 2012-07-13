@@ -1,0 +1,15 @@
+DC-FTPD
+=======
+
+DC-FTPD is an FTP server for the Dreamcast.  It is based on the lwIP
+ftpd implementation by Florian Schulze.  A Broadband adapter is needed
+to run this software.
+
+Features
+--------
+
+The following content is served by the server:
+
+* ROM contents
+* Flash partition contents
+
