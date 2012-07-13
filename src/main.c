@@ -36,6 +36,9 @@
 
 int main()
 {
+#ifdef SERIAL
+  serial_init(57600);
+#endif
   lwip_init();
   vfs_init();
   flash_be_init();

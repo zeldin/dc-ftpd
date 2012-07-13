@@ -18,7 +18,7 @@ RONINDIR=@RONINDIR@
 BASEADDR=0x8c010000
 
 OBJS = main.o ftpd.o vfs.o vfsnode.o flash.o
-LIBS = -lronin
+LIBS = -lronin-noserial
 
 all : ftpd.elf
 
