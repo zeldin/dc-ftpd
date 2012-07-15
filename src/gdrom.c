@@ -44,6 +44,7 @@ static sys_mbox_t mbox;
 
 static vfsnode_t *root = NULL;
 static struct TOC toc[2];
+static int curr_secsize, curr_secmode;
 
 static int gdfs_errno_to_errno(int n)
 {
@@ -94,12 +95,162 @@ static int exec_cmd(int cmd, void *param)
   return wait_cmd(f);
 }
 
-static void make_vfsnodes_session(vfsnode_t *parent, int n)
+static int read_sectors(int sec, int secsize, int secmode, char *buf, int num)
 {
+  struct { int sec, num; void *buffer; int dunno; } param;
+  if (secsize != curr_secsize || secmode != curr_secmode) {
+    unsigned int param[4];
+    param[0] = 0; /* set data type */
+    param[1] = 8192;
+    param[2] = secmode;
+    param[3] = secsize;
+    curr_secsize = curr_secmode = -1;
+    if(gdGdcChangeDataType(param)<0)
+      return -EIO;
+    curr_secsize = secsize;
+    curr_secmode = secmode;
+  }
+  param.sec = sec;
+  param.num = num;
+  param.buffer = buf;
+  param.dunno = 0;
+  return exec_cmd(16, &param);
+}
+
+typedef struct gdrom_track_s {
+  int start, end, sectorsize, sectormode;
+  unsigned char ctrl, adr;
+} gdrom_track_t;
+
+typedef struct tracknode_private_s {
+  gdrom_track_t track;
+} tracknode_private_t;
+
+static void tracknode_init(vfsnode_t *node, void *context)
+{
+  tracknode_private_t *private = calloc(1, sizeof(tracknode_private_t));
+  if (private) {
+    private->track = *(gdrom_track_t *)context;
+    node->private = private;
+  }
+}
+
+static int tracknode_stat(vfsnode_t *node, const char *path, vfs_stat_t *st)
+{
+  tracknode_private_t *private = (tracknode_private_t *)node->private;
+  if (private) {
+    st->st_size = private->track.sectorsize *
+      (private->track.end - private->track.start);
+  } else
+    return -ENOENT;
+}
+
+static int tracknode_open(vfsnode_t *node, vfs_file_t *file, const char *path,
+			  int write_mode)
+{
+  if (*path)
+    return -ENOENT;
+  if (write_mode)
+    return -EROFS;
+  file->posn = 0;
+  return 0;
+}
+
+static int tracknode_read(vfsnode_t *node, vfs_file_t *file, void *buffer,
+			  size_t size, size_t nmemb)
+{
+  tracknode_private_t *private = (tracknode_private_t *)node->private;
+  if (private) {
+    size_t bytes, cnt =
+      (private->track.sectorsize * (private->track.end - private->track.start)
+       - file->posn)/size;
+    if (cnt > nmemb)
+      cnt = nmemb;
+    bytes = cnt * size;
+    if (bytes) {
+      int sec = file->posn / private->track.sectorsize + private->track.start;
+      int offs = file->posn % private->track.sectorsize;
+      int bl = bytes;
+      char buf[2352];
+      if (offs || bl < private->track.sectorsize) {
+	int r = read_sectors(sec, private->track.sectorsize,
+			     private->track.sectormode, buf, 1);
+	if (r<0)
+	  return r;
+	sec++;
+	if (offs + bl > private->track.sectorsize) {
+	  memcpy(buffer, buf+offs, private->track.sectorsize-offs);
+	  buffer = ((char *)buffer)+private->track.sectorsize-offs;
+	  bl -= private->track.sectorsize-offs;
+	} else {
+	  memcpy(buffer, buf+offs, bl);
+	  buffer = ((char *)buffer)+bl;
+	  bl = 0;
+	}
+      }
+      if (bl >= private->track.sectorsize) {
+	int sn = bl/private->track.sectorsize;
+	int r = read_sectors(sec, private->track.sectorsize,
+			     private->track.sectormode, buffer, sn);
+	if (r<0)
+	  return r;
+	sec += sn;
+	buffer = ((char *)buffer)+bl;
+	bl %= private->track.sectorsize;
+	buffer = ((char *)buffer)-bl;
+      }
+      if (bl) {
+	int r = read_sectors(sec, private->track.sectorsize,
+			     private->track.sectormode, buf, 1);
+	if (r<0)
+	  return r;
+	memcpy(buffer, buf, bl);
+      }
+      file->posn += bytes;
+    }
+    return cnt;
+  } else
+    return 0;
+}
+
+static vfsnode_vtable_t tracknode_vtable = {
+  .init = tracknode_init,
+  .stat = tracknode_stat,
+  .open = tracknode_open,
+  .read = tracknode_read,
+};
+
+static void make_vfsnodes_track(vfsnode_t *parent, int n, int t, int *param,
+				unsigned int entry, unsigned int next)
+{
+  char name[16];
+  int datatrack = TOC_CTRL(entry)&4;
+  int cdxa = (param[1] == 32);
+  gdrom_track_t track = { .start = TOC_LBA(entry),
+			  .end = TOC_LBA(next),
+			  .ctrl = TOC_CTRL(entry),
+			  .adr = TOC_ADR(entry),
+			  .sectorsize = (datatrack? 2048 : 2352),
+			  .sectormode = (datatrack? (cdxa? 2048 : 1024) : 0) };
+  sprintf(name, "track%02d.%s", t, (datatrack? "iso" : "cdda"));
+  if (track.end >= track.start)
+    vfsnode_mknode(parent, name, &tracknode_vtable, &track);
+}
+
+static void make_vfsnodes_session(vfsnode_t *parent, int n, int *param)
+{
+  int track;
+
   if (!parent)
     return;
 
   vfsnode_mkromnode(parent, "toc", &toc[n], sizeof(toc[n]));
+  for(track = TOC_TRACK(toc[n].first); track <= TOC_TRACK(toc[n].last);
+      track++)
+    if (track >= 1 && track <= 99)
+      make_vfsnodes_track(parent, n, track, param, toc[n].entry[track-1],
+			  toc[n].entry[(track == TOC_TRACK(toc[n].last)?
+					101 : track)]);
 }
 
 static void make_vfsnodes(void)
@@ -113,6 +264,8 @@ static void make_vfsnodes(void)
       break;
   if(r)
     return;
+
+  curr_secsize = curr_secmode = -1;
   
   for(i=0; i<2; i++) {
     struct { int session; void *buffer; } param;
@@ -125,6 +278,8 @@ static void make_vfsnodes(void)
   if (tocr[0]<0 && tocr[1]<0)
     return;
 
+  gdGdcGetDrvStat(param);
+
   vfs_lock();
   root = vfsnode_mkvirtnode(NULL, "gdrom");
   if (root != NULL)
@@ -132,7 +287,7 @@ static void make_vfsnodes(void)
       char name[16];
       sprintf(name, "session%d", i+1);
       if (tocr[i]>=0)
-	make_vfsnodes_session(vfsnode_mkvirtnode(root, name), i);
+	make_vfsnodes_session(vfsnode_mkvirtnode(root, name), i, param);
     }
   vfs_unlock();
 }
