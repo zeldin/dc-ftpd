@@ -279,12 +279,18 @@ void vfsnode_destroy(vfsnode_t *node)
     vfs_dir_t *dd = node->dirs;
     node->dirs = dd->link;
     dd->link = NULL;
+    if (dd->node == node &&
+	node->vtable->closedir)
+      node->vtable->closedir(node, dd);
     dd->node = NULL;
   }
   while (node->files) {
     vfs_file_t *ff = node->files;
     node->files = ff->link;
     ff->link = NULL;
+    if (ff->node == node &&
+	node->vtable->close)
+      node->vtable->close(node, ff);
     ff->node = NULL;
   }
   if (node->vtable->destroy)
