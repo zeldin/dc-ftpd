@@ -374,7 +374,7 @@ static int sfifo_read(sfifo_t *f, void *_buf, int len)
 }
 
 struct ftpd_datastate {
-	int connected;
+	int connected, sending;
 	vfs_dir_t *vfs_dir;
 	vfs_dirent_t *vfs_dirent;
 	vfs_file_t *vfs_file;
@@ -391,7 +391,7 @@ struct ftpd_msgstate {
 	u16_t dataport;
 	struct tcp_pcb *datapcb;
 	struct ftpd_datastate *datafs;
-	int passive;
+	int passive, sending;
 	char *renamefrom;
 };
 
@@ -426,6 +426,11 @@ static void send_data(struct tcp_pcb *pcb, struct ftpd_datastate *fsd)
 	err_t err;
 	u16_t len;
 
+	/* This function is not reentrant */
+	if (fsd->sending)
+		return;
+	fsd->sending = 1;
+
 	if (sfifo_used(&fsd->fifo) > 0) {
 		int i;
 
@@ -442,6 +447,7 @@ static void send_data(struct tcp_pcb *pcb, struct ftpd_datastate *fsd)
 			err = tcp_write(pcb, fsd->fifo.buffer + i, (u16_t)(fsd->fifo.size - i), 1);
 			if (err != ERR_OK) {
 				dbg_printf("send_data: error writing!\n");
+				fsd->sending = 0;
 				return;
 			}
 			len -= fsd->fifo.size - i;
@@ -452,10 +458,13 @@ static void send_data(struct tcp_pcb *pcb, struct ftpd_datastate *fsd)
 		err = tcp_write(pcb, fsd->fifo.buffer + i, len, 1);
 		if (err != ERR_OK) {
 			dbg_printf("send_data: error writing!\n");
+			fsd->sending = 0;
 			return;
 		}
 		fsd->fifo.readpos += len;
 	}
+
+	fsd->sending = 0;
 }
 
 static void send_file(struct ftpd_datastate *fsd, struct tcp_pcb *pcb)
@@ -1155,6 +1164,11 @@ static void send_msgdata(struct tcp_pcb *pcb, struct ftpd_msgstate *fsm)
 	err_t err;
 	u16_t len;
 
+	/* This function is not reentrant */
+	if (fsm->sending)
+		return;
+	fsm->sending = 1;
+
 	if (sfifo_used(&fsm->fifo) > 0) {
 		int i;
 
@@ -1171,6 +1185,7 @@ static void send_msgdata(struct tcp_pcb *pcb, struct ftpd_msgstate *fsm)
 			err = tcp_write(pcb, fsm->fifo.buffer + i, (u16_t)(fsm->fifo.size - i), 1);
 			if (err != ERR_OK) {
 				dbg_printf("send_msgdata: error writing!\n");
+				fsm->sending = 0;
 				return;
 			}
 			len -= fsm->fifo.size - i;
@@ -1181,10 +1196,13 @@ static void send_msgdata(struct tcp_pcb *pcb, struct ftpd_msgstate *fsm)
 		err = tcp_write(pcb, fsm->fifo.buffer + i, len, 1);
 		if (err != ERR_OK) {
 			dbg_printf("send_msgdata: error writing!\n");
+			fsm->sending = 0;
 			return;
 		}
 		fsm->fifo.readpos += len;
 	}
+
+	fsm->sending = 0;
 }
 
 static void send_msg(struct tcp_pcb *pcb, struct ftpd_msgstate *fsm, char *msg, ...)
