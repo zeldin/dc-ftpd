@@ -1353,6 +1353,7 @@ static err_t ftpd_msgpoll(void *arg, struct tcp_pcb *pcb)
 			default:
 				break;
 			}
+			tcp_output(fsm->datapcb);
 		}
 	}
 
