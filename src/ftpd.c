@@ -431,7 +431,7 @@ static void send_data(struct tcp_pcb *pcb, struct ftpd_datastate *fsd)
 		return;
 	fsd->sending = 1;
 
-	if (sfifo_used(&fsd->fifo) > 0) {
+	if (sfifo_used(&fsd->fifo) > 0 && tcp_sndbuf(pcb) > 15) {
 		int i;
 
 		/* We cannot send more data than space available in the send
