@@ -598,6 +598,8 @@ static err_t ftpd_datasent(void *arg, struct tcp_pcb *pcb, u16_t len)
 	default:
 		break;
 	}
+	if (pcb->unsent && !pcb->unacked)
+		tcp_output(pcb);
 
 	return ERR_OK;
 }
@@ -673,6 +675,8 @@ static err_t ftpd_dataconnected(void *arg, struct tcp_pcb *pcb, err_t err)
 	default:
 		break;
 	}
+	if (pcb->unsent && !pcb->unacked)
+		tcp_output(pcb);
 
 	return ERR_OK;
 }
@@ -707,6 +711,8 @@ static err_t ftpd_dataaccept(void *arg, struct tcp_pcb *pcb, err_t err)
 	default:
 		break;
 	}
+	if (pcb->unsent && !pcb->unacked)
+		tcp_output(pcb);
 
 	return ERR_OK;
 }
@@ -1353,7 +1359,8 @@ static err_t ftpd_msgpoll(void *arg, struct tcp_pcb *pcb)
 			default:
 				break;
 			}
-			tcp_output(fsm->datapcb);
+			if (fsm->datapcb->unsent && !fsm->datapcb->unacked)
+				tcp_output(fsm->datapcb);
 		}
 	}
 
